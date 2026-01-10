@@ -1,278 +1,275 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+﻿import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { corsHeaders } from "../_shared/cors.ts";
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+const PLATFORM_TO_REGION: Record<string, string> = {
+    'br1': 'americas', 'la1': 'americas', 'la2': 'americas', 'na1': 'americas',
+    'euw1': 'europe', 'eun1': 'europe', 'tr1': 'europe', 'ru': 'europe',
+    'kr': 'asia', 'jp1': 'asia', 'oc1': 'sea', 'ph2': 'sea', 'sg2': 'sea',
+    'th2': 'sea', 'tw2': 'sea', 'vn2': 'sea',
 };
 
-const RIOT_API_KEY = Deno.env.get('RIOT_API_KEY');
-
-// Region routing for different API endpoints
-const REGIONS = {
-  americas: 'americas.api.riotgames.com',
-  europe: 'europe.api.riotgames.com',
-  asia: 'asia.api.riotgames.com',
-  sea: 'sea.api.riotgames.com',
+const PLATFORM_NORMALIZE: Record<string, string> = {
+    'euw': 'euw1', 'na': 'na1', 'eune': 'eun1', 'br': 'br1',
+    'jp': 'jp1', 'lan': 'la1', 'las': 'la2', 'oce': 'oc1',
+    'tr': 'tr1', 'ru': 'ru', 'kr': 'kr',
+    'euw1': 'euw1', 'na1': 'na1', 'eun1': 'eun1', 'br1': 'br1',
+    'jp1': 'jp1', 'la1': 'la1', 'la2': 'la2', 'oc1': 'oc1', 'tr1': 'tr1',
 };
 
-const PLATFORMS = {
-  euw1: 'euw1.api.riotgames.com',
-  na1: 'na1.api.riotgames.com',
-  kr: 'kr.api.riotgames.com',
-  br1: 'br1.api.riotgames.com',
-  eun1: 'eun1.api.riotgames.com',
-  jp1: 'jp1.api.riotgames.com',
-  la1: 'la1.api.riotgames.com',
-  la2: 'la2.api.riotgames.com',
-  oc1: 'oc1.api.riotgames.com',
-  tr1: 'tr1.api.riotgames.com',
-  ru: 'ru.api.riotgames.com',
-  ph2: 'ph2.api.riotgames.com',
-  sg2: 'sg2.api.riotgames.com',
-  th2: 'th2.api.riotgames.com',
-  tw2: 'tw2.api.riotgames.com',
-  vn2: 'vn2.api.riotgames.com',
-};
-
-// Map platform to regional routing
-const platformToRegion: Record<string, string> = {
-  na1: 'americas',
-  br1: 'americas',
-  la1: 'americas',
-  la2: 'americas',
-  euw1: 'europe',
-  eun1: 'europe',
-  tr1: 'europe',
-  ru: 'europe',
-  kr: 'asia',
-  jp1: 'asia',
-  oc1: 'sea',
-  ph2: 'sea',
-  sg2: 'sea',
-  th2: 'sea',
-  tw2: 'sea',
-  vn2: 'sea',
-};
-
-async function riotFetch(url: string) {
-  console.log(`Fetching: ${url}`);
-  const response = await fetch(url, {
-    headers: {
-      'X-Riot-Token': RIOT_API_KEY!,
-    },
-  });
-  
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`Riot API error (${response.status}): ${errorText}`);
-    throw new Error(`Riot API error: ${response.status} - ${errorText}`);
-  }
-  
-  return response.json();
+interface PlayerRequest {
+    action: 'getPlayer' | 'getMultiplePlayers';
+    gameName?: string;
+    tagLine?: string;
+    platform?: string;
+    players?: Array<{ gameName: string; tagLine: string; platform?: string }>;
 }
 
-// Get account by Riot ID (gameName#tagLine)
-async function getAccountByRiotId(gameName: string, tagLine: string, region: string = 'europe') {
-  const regionHost = REGIONS[region as keyof typeof REGIONS] || REGIONS.europe;
-  const url = `https://${regionHost}/riot/account/v1/accounts/by-riot-id/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}`;
-  return riotFetch(url);
-}
+// --- HELPER FUNCTIONS ---
+async function fetchRiotAPI(url: string) {
+    const apiKey = Deno.env.get('RIOT_API_KEY');
 
-// Get summoner by PUUID
-async function getSummonerByPuuid(puuid: string, platform: string = 'euw1') {
-  const platformHost = PLATFORMS[platform as keyof typeof PLATFORMS] || PLATFORMS.euw1;
-  const url = `https://${platformHost}/lol/summoner/v4/summoners/by-puuid/${puuid}`;
-  return riotFetch(url);
-}
+    const response = await fetch(url, {
+        headers: { 'X-Riot-Token': apiKey!, },
+    });
 
-// Get ranked stats
-async function getRankedStats(summonerId: string, platform: string = 'euw1') {
-  const platformHost = PLATFORMS[platform as keyof typeof PLATFORMS] || PLATFORMS.euw1;
-  const url = `https://${platformHost}/lol/league/v4/entries/by-summoner/${summonerId}`;
-  return riotFetch(url);
-}
-
-// Get match history (last X matches)
-async function getMatchHistory(puuid: string, region: string = 'europe', count: number = 10) {
-  const regionHost = REGIONS[region as keyof typeof REGIONS] || REGIONS.europe;
-  const url = `https://${regionHost}/lol/match/v5/matches/by-puuid/${puuid}/ids?queue=420&count=${count}`;
-  return riotFetch(url);
-}
-
-// Get match details
-async function getMatchDetails(matchId: string, region: string = 'europe') {
-  const regionHost = REGIONS[region as keyof typeof REGIONS] || REGIONS.europe;
-  const url = `https://${regionHost}/lol/match/v5/matches/${matchId}`;
-  return riotFetch(url);
-}
-
-// Check if player is in game
-async function getActiveGame(puuid: string, platform: string = 'euw1') {
-  const platformHost = PLATFORMS[platform as keyof typeof PLATFORMS] || PLATFORMS.euw1;
-  const url = `https://${platformHost}/lol/spectator/v5/active-games/by-summoner/${puuid}`;
-  
-  try {
-    return await riotFetch(url);
-  } catch (error) {
-    // 404 means player is not in game - this is expected
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    if (errorMessage.includes('404')) {
-      return null;
+    if (!response.ok) {
+        throw { status: response.status, statusText: response.statusText };
     }
-    throw error;
-  }
+
+    return response.json();
 }
 
-// Get champion mastery
-async function getChampionMastery(puuid: string, platform: string = 'euw1', count: number = 3) {
-  const platformHost = PLATFORMS[platform as keyof typeof PLATFORMS] || PLATFORMS.euw1;
-  const url = `https://${platformHost}/lol/champion-mastery/v4/champion-masteries/by-puuid/${puuid}/top?count=${count}`;
-  return riotFetch(url);
+async function getAccountByRiotId(gameName: string, tagLine: string, platform: string) {
+    const region = PLATFORM_TO_REGION[platform] || 'americas';
+    const url = `https://${region}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}`;
+    return fetchRiotAPI(url);
 }
 
-// Main function to get complete player data
-async function getPlayerData(gameName: string, tagLine: string, platform: string = 'euw1') {
-  const region = platformToRegion[platform] || 'europe';
-  
-  console.log(`Getting player data for ${gameName}#${tagLine} on ${platform} (${region})`);
-  
-  // Step 1: Get account info
-  const account = await getAccountByRiotId(gameName, tagLine, region);
-  console.log(`Found account: ${account.puuid}`);
-  
-  // Step 2: Get summoner info
-  const summoner = await getSummonerByPuuid(account.puuid, platform);
-  console.log(`Summoner ID: ${summoner.id}, Level: ${summoner.summonerLevel}`);
-  
-  // Step 3: Get ranked stats
-  const rankedStats = await getRankedStats(summoner.id, platform);
-  const soloQStats = rankedStats.find((q: any) => q.queueType === 'RANKED_SOLO_5x5');
-  console.log(`Ranked stats: ${JSON.stringify(soloQStats)}`);
-  
-  // Step 4: Get match history (last 10 ranked games)
-  const matchIds = await getMatchHistory(account.puuid, region, 10);
-  console.log(`Found ${matchIds.length} recent matches`);
-  
-  // Step 5: Get match details for recent matches (limit to 5 for performance)
-  const recentMatches = [];
-  for (const matchId of matchIds.slice(0, 5)) {
+async function getSummonerByPUUID(puuid: string, platform: string) {
+    const url = `https://${platform}.api.riotgames.com/lol/summoner/v4/summoners/by-puuid/${puuid}`;
+    return fetchRiotAPI(url);
+}
+
+async function getLeagueEntries(id: string, platform: string, isPuuid: boolean = false) {
+    const endpointType = isPuuid ? 'by-puuid' : 'by-summoner';
+    const url = `https://${platform}.api.riotgames.com/lol/league/v4/entries/${endpointType}/${id}`;
+
     try {
-      const match = await getMatchDetails(matchId, region);
-      const participant = match.info.participants.find((p: any) => p.puuid === account.puuid);
-      if (participant) {
-        recentMatches.push({
-          won: participant.win,
-          championId: participant.championId.toString(),
-          championName: participant.championName,
-        });
-      }
-    } catch (error) {
-      console.error(`Error fetching match ${matchId}:`, error);
+        return await fetchRiotAPI(url);
+    } catch (err: any) {
+        if (err.status === 404) return [];
+        throw new Error(`Riot API error: ${err.status} ${err.statusText}`);
     }
-  }
-  
-  // Step 6: Check if player is in game
-  let isInGame = false;
-  try {
-    const activeGame = await getActiveGame(account.puuid, platform);
-    isInGame = activeGame !== null;
-    console.log(`In game: ${isInGame}`);
-  } catch (error) {
-    console.error('Error checking active game:', error);
-  }
-  
-  // Step 7: Get champion mastery for top champions
-  let topChampions = [];
-  try {
-    const mastery = await getChampionMastery(account.puuid, platform, 3);
-    topChampions = mastery.map((m: any) => ({
-      id: m.championId.toString(),
-      championPoints: m.championPoints,
-      championLevel: m.championLevel,
-    }));
-    console.log(`Top champions: ${JSON.stringify(topChampions)}`);
-  } catch (error) {
-    console.error('Error fetching champion mastery:', error);
-  }
-  
-  // Build player object
-  const player = {
-    id: account.puuid,
-    summonerName: account.gameName,
-    tagLine: account.tagLine,
-    profileIconId: summoner.profileIconId,
-    rank: soloQStats?.tier || 'UNRANKED',
-    division: soloQStats?.rank || 'I',
-    lp: soloQStats?.leaguePoints || 0,
-    wins: soloQStats?.wins || 0,
-    losses: soloQStats?.losses || 0,
-    winRate: soloQStats ? Math.round((soloQStats.wins / (soloQStats.wins + soloQStats.losses)) * 100) : 0,
-    recentMatches,
-    topChampions,
-    isInGame,
-    lastUpdated: new Date().toISOString(),
-  };
-  
-  return player;
+}
+
+async function getChampionMastery(puuid: string, platform: string) {
+    // UPDATED: Ensure we get only top 3 to keep response clean
+    const url = `https://${platform}.api.riotgames.com/lol/champion-mastery/v4/champion-masteries/by-puuid/${puuid}/top?count=3`;
+    return fetchRiotAPI(url);
+}
+
+// --- Get Active Game (Spectator V5) ---
+async function getActiveGame(puuid: string, platform: string) {
+    const url = `https://${platform}.api.riotgames.com/lol/spectator/v5/active-games/by-summoner/${puuid}`;
+
+    try {
+        const gameData = await fetchRiotAPI(url);
+        return gameData;
+    } catch (err: any) {
+        if (err.status === 404 || err.status) {
+            return null;
+        }
+        return null;
+    }
+}
+
+// --- UPDATED MATCH HISTORY LOGIC ---
+async function getMatchHistory(puuid: string, platform: string, desiredCount: number = 5) {
+    const routingMap: Record<string, string> = {
+        'euw1': 'europe', 'eun1': 'europe', 'tr1': 'europe', 'ru': 'europe',
+        'na1': 'americas', 'br1': 'americas', 'la1': 'americas', 'la2': 'americas',
+        'kr': 'asia', 'jp1': 'asia',
+    };
+
+    const routing = routingMap[platform] || 'americas';
+    const baseUrl = `https://${routing}.api.riotgames.com`;
+
+    // 1. We ask for MORE IDs than we need (buffer for remakes). 
+    // If we want 5 games, we ask for 10 IDs.
+    const buffer = 5;
+    const matchListUrl = `${baseUrl}/lol/match/v5/matches/by-puuid/${puuid}/ids?start=0&count=${desiredCount + buffer}`;
+
+    try {
+        const matchIds = await fetchRiotAPI(matchListUrl);
+        const matches = [];
+
+        for (const matchId of matchIds) {
+            // STOP condition: If we already have 5 VALID matches, stop fetching.
+            if (matches.length >= desiredCount) break;
+
+            try {
+                const matchUrl = `${baseUrl}/lol/match/v5/matches/${matchId}`;
+                const matchData = await fetchRiotAPI(matchUrl);
+
+                // --- REMAKE CHECK ---
+                // If game duration is less than 270 seconds (4.5 mins), it's likely a remake.
+                // We skip this iteration and don't add it to 'matches'.
+                // The loop continues to the next ID to fill the slot.
+                if (matchData.info.gameDuration < 270) {
+                    continue;
+                }
+
+                matches.push(matchData);
+            } catch (error) {
+                console.error(`Failed to fetch match ${matchId}:`, error);
+            }
+        }
+        return matches;
+    } catch (e) {
+        console.error("Match History Error", e);
+        return [];
+    }
+}
+
+// --- MAIN CONTROLLER ---
+async function getPlayerData(gameName: string, tagLine: string, platform: string = 'euw1') {
+    try {
+        platform = PLATFORM_NORMALIZE[platform.toLowerCase()] || 'euw1';
+
+        // 1. Get PUUID
+        const account = await getAccountByRiotId(gameName, tagLine, platform);
+        if (!account || !account.puuid) throw new Error(`Account not found: ${gameName}#${tagLine}`);
+        const puuid = account.puuid;
+
+        // 2. Get Summoner Info
+        const summoner = await getSummonerByPUUID(puuid, platform);
+
+        let lookupId = summoner.id;
+        let usePuuidForLeague = false;
+
+        if (!lookupId) {
+            lookupId = puuid;
+            usePuuidForLeague = true;
+        }
+
+        // 3. Parallel Requests
+        // getMatchHistory now handles the "Remake Skip" logic internally
+        const [leagueEntries, championMastery, activeGame, matches] = await Promise.all([
+            getLeagueEntries(lookupId, platform, usePuuidForLeague),
+            getChampionMastery(puuid, platform),
+            getActiveGame(puuid, platform),
+            getMatchHistory(puuid, platform, 5)
+        ]);
+
+        const rankedSolo = Array.isArray(leagueEntries)
+            ? leagueEntries.find((entry: any) => entry.queueType === 'RANKED_SOLO_5x5')
+            : null;
+
+        // Process Matches
+        const recentMatches = Array.isArray(matches) ? matches.map((match: any) => {
+            if (!match?.info?.participants) return { won: false, championId: 0 };
+            const participant = match.info.participants.find((p: any) => p.puuid === puuid);
+            return {
+                won: participant?.win || false,
+                championId: participant?.championId?.toString() || '0',
+                kda: participant ? `${participant.kills}/${participant.deaths}/${participant.assists}` : 'N/A'
+            };
+        }) : [];
+
+        // Return Data
+        return {
+            id: lookupId,
+            summonerName: account.gameName,
+            tagLine: account.tagLine,
+            profileIconId: summoner.profileIconId,
+            rank: rankedSolo ? rankedSolo.tier : 'UNRANKED',
+            division: rankedSolo ? rankedSolo.rank : '',
+            lp: rankedSolo ? rankedSolo.leaguePoints : 0,
+            wins: rankedSolo ? rankedSolo.wins : 0,
+            losses: rankedSolo ? rankedSolo.losses : 0,
+            winRate: rankedSolo ? Math.round((rankedSolo.wins / (rankedSolo.wins + rankedSolo.losses)) * 100) : 0,
+            recentMatches,
+            topChampions: Array.isArray(championMastery) ? championMastery.map((mastery: any) => ({
+                id: mastery.championId.toString(),
+                championPoints: mastery.championPoints,
+            })) : [],
+            activeGame: activeGame,
+            lastUpdated: new Date().toISOString(),
+        };
+
+    } catch (error) {
+        console.error(`Error processing ${gameName}#${tagLine}:`, error);
+        throw error;
+    }
 }
 
 serve(async (req) => {
-  // Handle CORS preflight requests
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
-
-  try {
-    if (!RIOT_API_KEY) {
-      throw new Error('RIOT_API_KEY is not configured');
+    if (req.method === 'OPTIONS') {
+        return new Response('ok', { headers: corsHeaders });
     }
 
-    const { action, gameName, tagLine, platform = 'euw1', players } = await req.json();
-    
-    console.log(`Action: ${action}, Platform: ${platform}`);
+    try {
+        const { action, gameName, tagLine, platform, players }: PlayerRequest = await req.json();
 
-    switch (action) {
-      case 'getPlayer': {
-        if (!gameName || !tagLine) {
-          throw new Error('gameName and tagLine are required');
+        if (action === 'getPlayer') {
+            if (!gameName || !tagLine) {
+                throw new Error('gameName and tagLine are required');
+            }
+
+            const player = await getPlayerData(gameName, tagLine, platform);
+
+            return new Response(
+                JSON.stringify({ player }),
+                { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
         }
-        const player = await getPlayerData(gameName, tagLine, platform);
-        return new Response(JSON.stringify({ player }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-      
-      case 'getMultiplePlayers': {
-        if (!players || !Array.isArray(players)) {
-          throw new Error('players array is required');
+
+        if (action === 'getMultiplePlayers') {
+            if (!players || !Array.isArray(players)) {
+                throw new Error('players array is required');
+            }
+
+            const results = [];
+
+            for (const playerReq of players) {
+                try {
+                    const player = await getPlayerData(
+                        playerReq.gameName,
+                        playerReq.tagLine,
+                        playerReq.platform || platform || 'euw1'
+                    );
+                    results.push({
+                        success: true,
+                        gameName: playerReq.gameName,
+                        tagLine: playerReq.tagLine,
+                        player,
+                    });
+                } catch (error) {
+                    console.log('Error inside loop:', error);
+                    results.push({
+                        success: false,
+                        gameName: playerReq.gameName,
+                        tagLine: playerReq.tagLine,
+                        error: error instanceof Error ? error.message : 'Unknown error',
+                    });
+                }
+                await new Promise(resolve => setTimeout(resolve, 200));
+            }
+
+            return new Response(
+                JSON.stringify({ results }),
+                { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
         }
-        
-        const results = [];
-        for (const p of players) {
-          try {
-            const player = await getPlayerData(p.gameName, p.tagLine, p.platform || platform);
-            results.push({ success: true, player });
-          } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            console.error(`Error fetching player ${p.gameName}#${p.tagLine}:`, error);
-            results.push({ success: false, error: errorMessage, gameName: p.gameName, tagLine: p.tagLine });
-          }
-        }
-        
-        return new Response(JSON.stringify({ results }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-      
-      default:
-        throw new Error(`Unknown action: ${action}`);
+
+        throw new Error('Invalid action');
+    } catch (error) {
+        return new Response(
+            JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }),
+            {
+                status: 400,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            }
+        );
     }
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error('Error in riot-api function:', error);
-    return new Response(JSON.stringify({ error: errorMessage }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-  }
 });

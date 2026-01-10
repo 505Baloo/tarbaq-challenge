@@ -1,45 +1,58 @@
-import { motion } from 'framer-motion';
-import { Trophy, RefreshCw } from 'lucide-react';
-import { ThemeToggle } from './ThemeToggle';
+import { RefreshCw, Trophy, CalendarClock } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 interface HeaderProps {
-  onRefresh: () => void;
-  isLoading: boolean;
-  playerCount: number;
+    currentDay: number;
+    totalDays: number;
+    maxGamesAllowed: number;
+    lastUpdated: Date | null;
+    isLoading: boolean;
+    onRefresh: () => void;
 }
 
-export const Header = ({ onRefresh, isLoading, playerCount }: HeaderProps) => {
-  return (
-    <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-md">
-      <div className="container mx-auto flex items-center justify-between px-4 py-4">
-        <motion.div
-          className="flex items-center gap-3"
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-        >
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <Trophy className="h-5 w-5" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-foreground">SoloQ Ladder</h1>
-            <p className="text-xs text-muted-foreground">{playerCount} challengers competing</p>
-          </div>
-        </motion.div>
+export const Header = ({
+    currentDay,
+    totalDays,
+    maxGamesAllowed,
+    lastUpdated,
+    isLoading,
+    onRefresh
+}: HeaderProps) => {
+    return (
+        <div className="flex flex-col md:flex-row justify-between items-end mb-10 gap-6">
+            <div>
+                <div className="flex items-center gap-3 mb-2">
+                    <div className="bg-yellow-500/10 p-2 rounded-xl border border-yellow-500/20">
+                        <Trophy className="w-6 h-6 text-yellow-600 dark:text-yellow-500" />
+                    </div>
+                    <h1 className="text-4xl font-black text-slate-900 dark:text-white">
+                        Tarba Solo/DuoQ <span className="text-indigo-600 dark:text-indigo-400">Challenge</span>
+                    </h1>
+                </div>
+                <div className="ml-1 space-y-1">
+                    <div className="flex items-center gap-4 text-sm font-semibold text-slate-600 dark:text-slate-300">
+                        <span className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400">
+                            <CalendarClock className="w-4 h-4" />
+                            Day {currentDay} <span className="text-slate-400 dark:text-slate-500">/ {totalDays}</span>
+                        </span>
+                        <span className="ml-2 pl-4 border-l border-slate-300 dark:border-slate-700">
+                            Max Games Allowed : <span className="text-slate-900 dark:text-white">{maxGamesAllowed}</span>
+                        </span>
+                    </div>
+                    <p className="text-xs text-slate-500">
+                        Last updated {lastUpdated ? lastUpdated.toLocaleTimeString() : '--:--'}
+                    </p>
+                </div>
+            </div>
 
-        <div className="flex items-center gap-3">
-          <motion.button
-            onClick={onRefresh}
-            disabled={isLoading}
-            className="flex h-10 items-center gap-2 rounded-lg border border-border bg-card px-4 text-sm font-medium text-foreground transition-colors hover:bg-secondary disabled:opacity-50"
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-          >
-            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-            Refresh
-          </motion.button>
-          <ThemeToggle />
+            <div className="flex items-center gap-3">
+                <ThemeToggle />
+
+                <Button onClick={onRefresh} disabled={isLoading} className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-md dark:shadow-none">
+                    <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} /> Refresh
+                </Button>
+            </div>
         </div>
-      </div>
-    </header>
-  );
+    );
 };
