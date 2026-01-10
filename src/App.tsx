@@ -13,7 +13,7 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <BrowserRouter>
+      <BrowserRouter basename="/tarbaq-challenge">
         <Routes>
           <Route path="/" element={<Index />} />
           {/* ADD CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
