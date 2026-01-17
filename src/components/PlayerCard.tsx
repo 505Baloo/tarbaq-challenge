@@ -1,104 +1,69 @@
-import { motion } from 'framer-motion';
-import { Player } from '@/types/player';
-import { RankBadge } from './RankBadge';
-import { StreakDisplay } from './StreakDisplay';
-import { ChampionList } from './ChampionList';
-import { StatusIndicator } from './StatusIndicator';
+﻿import { motion } from 'framer-motion';
+import { Rank, Division } from '@/types/player';
 import { cn } from '@/lib/utils';
 
-interface PlayerCardProps {
-  player: Player;
-  position: number;
+interface RankBadgeProps {
+    rank: Rank;
+    division: Division;
+    lp: number;
+    size?: 'sm' | 'md' | 'lg';
 }
 
-export const PlayerCard = ({ player, position }: PlayerCardProps) => {
-  const isTopThree = position <= 3;
+const rankStyles: Record<Rank, { bg: string; text: string }> = {
+    IRON: { bg: 'bg-rank-iron', text: 'text-slate-800' },
+    BRONZE: { bg: 'bg-rank-bronze', text: 'text-slate-900' },
+    SILVER: { bg: 'bg-rank-silver', text: 'text-slate-800' },
+    GOLD: { bg: 'bg-rank-gold', text: 'text-amber-900' },
+    PLATINUM: { bg: 'bg-rank-platinum', text: 'text-cyan-900' },
+    EMERALD: { bg: 'bg-rank-emerald', text: 'text-emerald-950' },
+    DIAMOND: { bg: 'bg-rank-diamond', text: 'text-blue-950' },
+    MASTER: { bg: 'bg-rank-master', text: 'text-purple-950' },
+    GRANDMASTER: { bg: 'bg-rank-grandmaster', text: 'text-red-950' },
+    CHALLENGER: { bg: 'bg-rank-challenger', text: 'text-amber-950' },
+};
 
-  return (
-    <motion.div
-      className={cn(
-        'glass-card relative overflow-hidden rounded-xl p-4 transition-all hover:border-primary/30',
-        isTopThree && 'border-primary/20'
-      )}
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3, delay: position * 0.05 }}
-      whileHover={{ y: -2 }}
-      layout
-    >
-      {/* Position indicator */}
-      <div className={cn(
-        'absolute -left-2 top-4 flex h-8 w-12 items-center justify-center rounded-r-lg font-mono text-sm font-bold',
-        position === 1 && 'bg-rank-gold text-primary-foreground',
-        position === 2 && 'bg-rank-silver text-foreground',
-        position === 3 && 'bg-rank-bronze text-foreground',
-        position > 3 && 'bg-secondary text-secondary-foreground'
-      )}>
-        #{position}
-      </div>
+const rankEmojis: Record<Rank, string> = {
+    IRON: '🪨',
+    BRONZE: '🥉',
+    SILVER: '🥈',
+    GOLD: '🥇',
+    PLATINUM: '💎',
+    EMERALD: '💚',
+    DIAMOND: '💠',
+    MASTER: '🏆',
+    GRANDMASTER: '👑',
+    CHALLENGER: '⚔️',
+};
 
-      <div className="ml-8 grid gap-4 md:grid-cols-[1fr,auto,auto,auto,auto] md:items-center">
-        {/* Player Info */}
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <img
-              src={`https://ddragon.leagueoflegends.com/cdn/14.1.1/img/profileicon/${player.profileIconId}.png`}
-              alt={player.summonerName}
-              className="h-12 w-12 rounded-lg border border-border object-cover"
-            />
-            {player.isInGame && (
-              <motion.div
-                className="absolute -bottom-1 -right-1 h-4 w-4 rounded-full border-2 border-card bg-success"
-                animate={{ scale: [1, 1.2, 1] }}
-                transition={{ duration: 2, repeat: Infinity }}
-              />
+export const RankBadge = ({ rank, division, lp, size = 'md' }: RankBadgeProps) => {
+    const showDivision = !['MASTER', 'GRANDMASTER', 'CHALLENGER'].includes(rank);
+
+    const sizeClasses = {
+        sm: 'px-2 py-1 text-xs gap-1',
+        md: 'px-3 py-1.5 text-sm gap-1.5',
+        lg: 'px-4 py-2 text-base gap-2',
+    };
+
+    const styles = rankStyles[rank];
+
+    return (
+        <motion.div
+            className={cn(
+                'inline-flex items-center rounded-full font-semibold shadow-sm',
+                styles.bg,
+                styles.text,
+                sizeClasses[size]
             )}
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-semibold text-foreground">{player.summonerName}</span>
-              <span className="text-xs text-muted-foreground">#{player.tagLine}</span>
-            </div>
-            <StatusIndicator isInGame={player.isInGame} />
-          </div>
-        </div>
-
-        {/* Rank */}
-        <div className="flex flex-col items-start gap-1">
-          <span className="text-xs text-muted-foreground">Rank</span>
-          <RankBadge rank={player.rank} division={player.division} lp={player.lp} size="sm" />
-        </div>
-
-        {/* Win Rate */}
-        <div className="flex flex-col items-start gap-1">
-          <span className="text-xs text-muted-foreground">Win Rate</span>
-          <div className="flex items-center gap-2">
-            <span className={cn(
-              'font-mono text-lg font-bold',
-              player.winRate >= 55 ? 'text-success' :
-              player.winRate >= 50 ? 'text-foreground' :
-              'text-destructive'
-            )}>
-              {player.winRate}%
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ duration: 0.2 }}
+        >
+            <span>{rankEmojis[rank]}</span>
+            <span className="capitalize">
+                {rank.toLowerCase()}
+                {showDivision && ` ${division}`}
             </span>
-            <span className="text-xs text-muted-foreground">
-              {player.wins}W {player.losses}L
-            </span>
-          </div>
-        </div>
-
-        {/* Streak */}
-        <div className="flex flex-col items-start gap-1">
-          <span className="text-xs text-muted-foreground">Recent</span>
-          <StreakDisplay matches={player.recentMatches} />
-        </div>
-
-        {/* Top Champions */}
-        <div className="flex flex-col items-start gap-1">
-          <span className="text-xs text-muted-foreground">Most Played</span>
-          <ChampionList champions={player.topChampions} />
-        </div>
-      </div>
-    </motion.div>
-  );
+            <span className="font-mono font-bold">{lp} LP</span>
+        </motion.div>
+    );
 };
